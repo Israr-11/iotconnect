@@ -43,6 +43,31 @@ class DeviceService:
         """Get all devices (admin function)"""
         return db.query(Device).all()
         
+    def toggle_device_status(self, db: Session, device_id: int, new_status: bool, user_id: Optional[int] = None) -> Tuple[Optional[Device], Optional[str]]:
+        """Toggle device on/off status and log the action"""
+        device = self.get_device_by_id(db, device_id)
+        if not device:
+            return None, "Device not found"
+            
+        # Update status
+        device.status = new_status
+        
+        # Create log entry
+        log_entry = DeviceLog(
+            device_id=device.id,
+            state=new_status,
+            action_by=user_id
+        )
+        
+        db.add(log_entry)
+        db.commit()
+        db.refresh(device)
+        
+        # Publish to MQTT (handled separately to avoid circular imports)
+        # We'll wire this up in the controller
+
+        return device, None
+
     def update_device(self, db: Session, device_id: int, update_data: Dict[str, Any]) -> Tuple[Optional[Device], Optional[str]]:
         """Update device information"""
         device = self.get_device_by_id(db, device_id)

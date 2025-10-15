@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from services import mqtt_service
+from services.mqtt_service import MQTTService
 
 from services.device_service import DeviceService
 from config.database import get_db
@@ -9,6 +11,7 @@ from schemas.device_schema import DeviceCreate, DeviceUpdate, DeviceResponse, De
 class DeviceController:
     def __init__(self):
         self.device_service = DeviceService()
+        self.mqtt_service = MQTTService()
     
     async def create_device(
         self, 
@@ -68,27 +71,21 @@ class DeviceController:
         
         return {"message": "Device updated successfully", "device": device.to_dict()}
     
-    async def toggle_device(
-        self, 
-        device_id: int,
-        toggle_data: DeviceToggle,
-        db: Session,
-        user_id: int = 2
-    ):
-        """Toggle device status"""
-        device, error = self.device_service.toggle_device_status(
-            db, 
-            device_id, 
-            toggle_data.status, 
-            user_id
-        )
-        
-        if error:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
-        
-        return {"message": "Device status updated", "device": device.to_dict()}
+async def toggle_device(self, device_id: int, toggle_data: DeviceToggle, db: Session):
+    """Toggle device status and publish to MQTT"""
+    device, error = self.device_service.toggle_device_status(
+        db, device_id, toggle_data.status, user_id=None
+    )
     
-    async def delete_device(
+    if error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+    
+    # Publish status change to MQTT
+    mqtt_service.publish_device_status(device.device_uid, toggle_data.status)
+    
+    return {"message": "Device status updated", "device": device.to_dict()}
+    
+async def delete_device(
         self, 
         device_id: int,
         db: Session
